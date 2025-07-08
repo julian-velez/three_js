@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Escena Interactiva Three.js</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: 'Arial', sans-serif;
+            overflow: hidden;
+        }
+        
+        #container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+        
+        #controls {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 100;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 20px;
+            border-radius: 12px;
+            color: white;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        #controls h3 {
+            margin: 0 0 15px 0;
+            color: #00ffff;
+            text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+        }
+        
+        .control-group {
+            margin: 10px 0;
+        }
+        
+        .control-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 12px;
+            color: #ccc;
+        }
+        
+        input[type="range"] {
+            width: 150px;
+            margin: 5px 0;
+        }
+        
+        button {
+            background: linear-gradient(45deg, #ff6b6b, #4ecdc4);
+            border: none;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 12px;
+            transition: transform 0.2s;
+        }
+        
+        button:hover {
+            transform: scale(1.05);
+        }
+        
+        #info {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            z-index: 100;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 12px;
+            max-width: 250px;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <div id="controls">
+            <h3>🎮 Controles</h3>
+            <div class="control-group">
+                <label>Rotación Automática:</label>
+                <input type="range" id="rotationSpeed" min="0" max="0.05" step="0.005" value="0.01">
+            </div>
+            <div class="control-group">
+                <label>Número de Cubos:</label>
+                <input type="range" id="cubeCount" min="5" max="50" value="20">
+            </div>
+            <div class="control-group">
+                <label>Intensidad de Luz:</label>
+                <input type="range" id="lightIntensity" min="0.1" max="2" step="0.1" value="1">
+            </div>
+            <button onclick="randomizeColors()">🎨 Colores Aleatorios</button>
+            <button onclick="resetScene()">🔄 Reiniciar</button>
+            <button onclick="toggleWireframe()">📐 Wireframe</button>
+        </div>
+        
+        <div id="info">
+            <strong>🌟 Escena Interactiva</strong><br>
+            • Usa el mouse para rotar la cámara<br>
+            • Scroll para hacer zoom<br>
+            • Los cubos giran automáticamente<br>
+            • Experimenta con los controles<br>
+            • Haz clic en los cubos para interactuar
+        </div>
+    </div>
+
+    <script>
+        let scene, camera, renderer, cubes = [], lights = [];
+        let rotationSpeed = 0.01;
+        let wireframeMode = false;
+        let mouseX = 0, mouseY = 0;
+        let cameraAngle = 0;
+        let raycaster, mouse;
+        
+        function init() {
+            // Crear escena
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0a0a0a);
+            
+            // Configurar cámara
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 5, 15);
+            
+            // Crear renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            document.getElementById('container').appendChild(renderer.domElement);
+            
+            // Configurar raycaster para interacciones
+            raycaster = new THREE.Raycaster();
+            mouse = new THREE.Vector2();
+            
+            // Agregar luces
+            addLights();
+            
+            // Crear cubos iniciales
+            createCubes(20);
+            
+            // Agregar piso
+            createFloor();
+            
+            // Eventos
+            setupEvents();
+            
+            // Iniciar animación
+            animate();
+        }
+        
+        function addLights() {
+            // Luz ambiental
+            const ambientLight = new THREE.AmbientLight(0x404040, 0.3);
+            scene.add(ambientLight);
+            
+            // Luz direccional principal
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+            directionalLight.position.set(10, 10, 5);
+            directionalLight.castShadow = true;
+            directionalLight.shadow.mapSize.width = 2048;
+            directionalLight.shadow.mapSize.height = 2048;
+            scene.add(directionalLight);
+            lights.push(directionalLight);
+            
+            // Luces de colores
+            const colors = [0xff0080, 0x00ff80, 0x8000ff, 0xff8000];
+            colors.forEach((color, i) => {
+                const light = new THREE.PointLight(color, 0.5, 20);
+                const angle = (i / colors.length) * Math.PI * 2;
+                light.position.set(
+                    Math.cos(angle) * 8,
+                    5,
+                    Math.sin(angle) * 8
+                );
+                scene.add(light);
+                lights.push(light);
+            });
+        }
+        
+        function createCubes(count) {
+            // Limpiar cubos existentes
+            cubes.forEach(cube => scene.remove(cube));
+            cubes = [];
+            
+            for (let i = 0; i < count; i++) {
+                const geometry = new THREE.BoxGeometry(
+                    Math.random() * 2 + 0.5,
+                    Math.random() * 2 + 0.5,
+                    Math.random() * 2 + 0.5
+                );
+                
+                const material = new THREE.MeshPhongMaterial({
+                    color: new THREE.Color().setHSL(Math.random(), 0.8, 0.5),
+                    shininess: 100,
+                    wireframe: wireframeMode
+                });
+                
+                const cube = new THREE.Mesh(geometry, material);
+                
+                // Posición aleatoria
+                cube.position.set(
+                    (Math.random() - 0.5) * 20,
+                    Math.random() * 8 + 1,
+                    (Math.random() - 0.5) * 20
+                );
+                
+                // Rotación aleatoria
+                cube.rotation.set(
+                    Math.random() * Math.PI,
+                    Math.random() * Math.PI,
+                    Math.random() * Math.PI
+                );
+                
+                // Velocidad de rotación personalizada
+                cube.userData = {
+                    rotationSpeed: {
+                        x: (Math.random() - 0.5) * 0.02,
+                        y: (Math.random() - 0.5) * 0.02,
+                        z: (Math.random() - 0.5) * 0.02
+                    },
+                    originalY: cube.position.y,
+                    floatOffset: Math.random() * Math.PI * 2
+                };
+                
+                cube.castShadow = true;
+                cube.receiveShadow = true;
+                
+                scene.add(cube);
+                cubes.push(cube);
+            }
+        }
+        
+        function createFloor() {
+            const geometry = new THREE.PlaneGeometry(50, 50);
+            const material = new THREE.MeshPhongMaterial({
+                color: 0x222222,
+                shininess: 30
+            });
+            const floor = new THREE.Mesh(geometry, material);
+            floor.rotation.x = -Math.PI / 2;
+            floor.position.y = -1;
+            floor.receiveShadow = true;
+            scene.add(floor);
+        }
+        
+        function setupEvents() {
+            // Controles del mouse
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('click', onMouseClick);
+            document.addEventListener('wheel', onMouseWheel);
+            
+            // Controles de la interfaz
+            document.getElementById('rotationSpeed').addEventListener('input', (e) => {
+                rotationSpeed = parseFloat(e.target.value);
+            });
+            
+            document.getElementById('cubeCount').addEventListener('input', (e) => {
+                createCubes(parseInt(e.target.value));
+            });
+            
+            document.getElementById('lightIntensity').addEventListener('input', (e) => {
+                const intensity = parseFloat(e.target.value);
+                lights.forEach(light => {
+                    if (light.intensity !== undefined) {
+                        light.intensity = intensity;
+                    }
+                });
+            });
+            
+            // Resize
+            window.addEventListener('resize', onWindowResize);
+        }
+        
+        function onMouseMove(event) {
+            mouseX = (event.clientX / window.innerWidth) * 2 - 1;
+            mouseY = -(event.clientY / window.innerHeight) * 2 + 1;
+            
+            // Actualizar posición del mouse para raycaster
+            mouse.x = mouseX;
+            mouse.y = mouseY;
+        }
+        
+        function onMouseClick(event) {
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(cubes);
+            
+            if (intersects.length > 0) {
+                const clickedCube = intersects[0].object;
+                
+                // Animar el cubo clickeado
+                clickedCube.material.color.setHSL(Math.random(), 0.8, 0.5);
+                
+                // Efecto de "salto"
+                const originalY = clickedCube.userData.originalY;
+                clickedCube.position.y = originalY + 3;
+                
+                // Hacer que vuelva a su posición original
+                setTimeout(() => {
+                    clickedCube.position.y = originalY;
+                }, 500);
+            }
+        }
+        
+        function onMouseWheel(event) {
+            camera.position.z += event.deltaY * 0.01;
+            camera.position.z = Math.max(5, Math.min(30, camera.position.z));
+        }
+        
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+        
+        function randomizeColors() {
+            cubes.forEach(cube => {
+                cube.material.color.setHSL(Math.random(), 0.8, 0.5);
+            });
+        }
+        
+        function resetScene() {
+            createCubes(20);
+            camera.position.set(0, 5, 15);
+            document.getElementById('rotationSpeed').value = 0.01;
+            document.getElementById('cubeCount').value = 20;
+            document.getElementById('lightIntensity').value = 1;
+            rotationSpeed = 0.01;
+        }
+        
+        function toggleWireframe() {
+            wireframeMode = !wireframeMode;
+            cubes.forEach(cube => {
+                cube.material.wireframe = wireframeMode;
+            });
+        }
+        
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            // Rotar cámara suavemente con el mouse
+            cameraAngle += mouseX * 0.01;
+            camera.position.x = Math.cos(cameraAngle) * 15;
+            camera.position.z = Math.sin(cameraAngle) * 15;
+            camera.lookAt(0, 0, 0);
+            
+            // Animar cubos
+            cubes.forEach((cube, index) => {
+                // Rotación
+                cube.rotation.x += cube.userData.rotationSpeed.x + rotationSpeed;
+                cube.rotation.y += cube.userData.rotationSpeed.y + rotationSpeed;
+                cube.rotation.z += cube.userData.rotationSpeed.z + rotationSpeed;
+                
+                // Flotación
+                const time = Date.now() * 0.001;
+                cube.position.y = cube.userData.originalY + 
+                    Math.sin(time + cube.userData.floatOffset) * 0.5;
+            });
+            
+            // Animar luces de colores
+            const time = Date.now() * 0.001;
+            lights.slice(1).forEach((light, i) => {
+                const angle = (i / (lights.length - 1)) * Math.PI * 2 + time * 0.5;
+                light.position.x = Math.cos(angle) * 8;
+                light.position.z = Math.sin(angle) * 8;
+            });
+            
+            renderer.render(scene, camera);
+        }
+        
+        // Inicializar cuando se carga la página
+        init();
+    </script>
+</body>
+</html>
